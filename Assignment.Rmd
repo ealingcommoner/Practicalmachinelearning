@@ -59,7 +59,7 @@ dataset<- na.omit(dataset)
 dim(dataset)
 ```
 ## Cross validation
-We will divide our dataset into training and validation sets and set a seed for reproducibility:
+We will divide our dataset into training and validation sets and set a seed for reproducibility.
 
 ```{r datasets}
 set.seed(343)
@@ -69,6 +69,12 @@ valid = dataset[-inTrain,]
 dim(training)
 dim(valid)
 ```
+For all models we will use a 5 fold cross validation approach.
+
+```{r fold}
+trCtrl <- trainControl(method = "cv", number = 5)
+```
+
 We now have a training set and a validation set. 
 However, we will be using our validation set to select our model. This means we should hold back some data to test the chosen model. We will call this the holdout set. 
 ```{r createholdout}
@@ -103,11 +109,11 @@ We need a classifier algorithm.
 
 Let's try Linear Discrimate Analysis. This may have advantages as we observed some correlation between some variables and we have a high number of samples. 
 ```{r lda}
-model2lda<- train(classe ~.,method="lda",data=training)
+model2lda<- train(classe ~.,method="lda",data=training, trControl = trCtrl)
 pred2lda<- predict(model2lda, validation)
 confusionMatrix(pred2lda, validation$classe)$overall["Accuracy"] 
 ```
-Now let's build a basic decision tree. Decision trees are fast and can handle data with non-gaussian distributions.  
+Now let's build a basic decision tree. Decision trees are fast and can handle data with non-gaussian distributions. Note that default folds are 10. 
 ```{r boosted tree}
 model2rprt<- rpart(classe ~ ., data=training, method="class")
 pred2rprt<- predict(model2rprt, validation, type="class")
@@ -115,11 +121,11 @@ confusionMatrix(pred2rprt, validation$classe)$overall["Accuracy"]
 ```
 This performs as well as LDA. However, a random forest model may have an advantage due to the higher dimensionality of the data. 
 ```{r random forest}
-model2rf<- randomForest(classe ~.,data=training, ntree=100) 
+model2rf<- randomForest(classe ~.,data=training, ntree=100, trControl = trCtrl) 
 pred2rf<- predict(model2rf, validation)
 confusionMatrix(pred2rf, validation$classe)$overall["Accuracy"] 
 ```
-This model performs well with 99.6% accuracy. 
+This model performs well with 99.7% accuracy. 
 
 Finally we will build a stacked model of these using the random forest method. 
 ```{r esemble models}
@@ -141,14 +147,13 @@ confusionMatrix(combPred_val, validation$classe)$overall["Accuracy"]
 ```
 We can see that there is no advantage to this approach, as it does not perform better than the best performing model. 
 
-# Cross validation
 We have selected our random forest predictor. Note we have used the validation dataset to select it, so we need to measure its performance against our holdout set. 
 ```{r xvalidation}
 pred2rfh<- predict(model2rf, holdout)
 confusionMatrix(pred2rfh, holdout$classe)$overall["Accuracy"] 
 ```
 # Out of sample error
-So our model is 99.6% accurate. We would therefore predict an out of sample error of 0.4%.
+So our model is 99.6% accurate on our holdout set. We would therefore predict an out of sample error of 0.4%.
 
 # Testing
 ```{r testing}

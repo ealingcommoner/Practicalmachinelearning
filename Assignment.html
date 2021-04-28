@@ -219,7 +219,7 @@ dim(dataset)</code></pre>
 </div>
 <div id="cross-validation" class="section level2">
 <h2>Cross validation</h2>
-<p>We will divide our dataset into training and validation sets and set a seed for reproducibility:</p>
+<p>We will divide our dataset into training and validation sets and set a seed for reproducibility.</p>
 <pre class="r"><code>set.seed(343)
 inTrain = createDataPartition(dataset$classe, p = 0.6)[[1]]
 training = dataset[ inTrain,]
@@ -228,6 +228,8 @@ dim(training)</code></pre>
 <pre><code>## [1] 11776    54</code></pre>
 <pre class="r"><code>dim(valid)</code></pre>
 <pre><code>## [1] 7846   54</code></pre>
+<p>For all models we will use a 5 fold cross validation approach.</p>
+<pre class="r"><code>trCtrl &lt;- trainControl(method = &quot;cv&quot;, number = 5)</code></pre>
 <p>We now have a training set and a validation set. However, we will be using our validation set to select our model. This means we should hold back some data to test the chosen model. We will call this the holdout set.</p>
 <pre class="r"><code>inTrain = createDataPartition(valid$classe, p = 0.6)[[1]]
 validation = valid[ inTrain,]
@@ -258,24 +260,24 @@ corrplot(M, type=&quot;upper&quot;, order=&quot;hclust&quot;, tl.pos=&#39;n&#39;
 <h2>Model building</h2>
 <p>We need a classifier algorithm.</p>
 <p>Let’s try Linear Discrimate Analysis. This may have advantages as we observed some correlation between some variables and we have a high number of samples.</p>
-<pre class="r"><code>model2lda&lt;- train(classe ~.,method=&quot;lda&quot;,data=training)
+<pre class="r"><code>model2lda&lt;- train(classe ~.,method=&quot;lda&quot;,data=training, trControl = trCtrl)
 pred2lda&lt;- predict(model2lda, validation)
 confusionMatrix(pred2lda, validation$classe)$overall[&quot;Accuracy&quot;] </code></pre>
 <pre><code>##  Accuracy 
 ## 0.7174098</code></pre>
-<p>Now let’s build a basic decision tree. Decision trees are fast and can handle data with non-gaussian distributions.</p>
+<p>Now let’s build a basic decision tree. Decision trees are fast and can handle data with non-gaussian distributions. Note that default folds are 10.</p>
 <pre class="r"><code>model2rprt&lt;- rpart(classe ~ ., data=training, method=&quot;class&quot;)
 pred2rprt&lt;- predict(model2rprt, validation, type=&quot;class&quot;)
 confusionMatrix(pred2rprt, validation$classe)$overall[&quot;Accuracy&quot;] </code></pre>
 <pre><code>##  Accuracy 
 ## 0.7549894</code></pre>
 <p>This performs as well as LDA. However, a random forest model may have an advantage due to the higher dimensionality of the data.</p>
-<pre class="r"><code>model2rf&lt;- randomForest(classe ~.,data=training, ntree=100) 
+<pre class="r"><code>model2rf&lt;- randomForest(classe ~.,data=training, ntree=100, trControl = trCtrl) 
 pred2rf&lt;- predict(model2rf, validation)
 confusionMatrix(pred2rf, validation$classe)$overall[&quot;Accuracy&quot;] </code></pre>
 <pre><code>##  Accuracy 
 ## 0.9968153</code></pre>
-<p>This model performs well with 99.6% accuracy.</p>
+<p>This model performs well with 99.7% accuracy.</p>
 <p>Finally we will build a stacked model of these using the random forest method.</p>
 <pre class="r"><code>predDF &lt;- data.frame(pred2rf,pred2rprt,pred2lda, classe=validation$classe)
 combModFit &lt;- randomForest(classe ~.,method=&quot;rf&quot;,data=predDF, method=&quot;class&quot;, ntree=100) 
@@ -290,21 +292,18 @@ names(ensemble_pred)&lt;- names(predDF)
     
 combPred_val &lt;- predict(combModFit,ensemble_pred)
 confusionMatrix(combPred_val, validation$classe)$overall[&quot;Accuracy&quot;] </code></pre>
-<pre><code>## Accuracy 
-## 0.996603</code></pre>
+<pre><code>##  Accuracy 
+## 0.9951168</code></pre>
 <p>We can see that there is no advantage to this approach, as it does not perform better than the best performing model.</p>
-</div>
-<div id="cross-validation-1" class="section level1">
-<h1>Cross validation</h1>
 <p>We have selected our random forest predictor. Note we have used the validation dataset to select it, so we need to measure its performance against our holdout set.</p>
 <pre class="r"><code>pred2rfh&lt;- predict(model2rf, holdout)
 confusionMatrix(pred2rfh, holdout$classe)$overall[&quot;Accuracy&quot;] </code></pre>
 <pre><code>##  Accuracy 
-## 0.9964923</code></pre>
+## 0.9961735</code></pre>
 </div>
 <div id="out-of-sample-error" class="section level1">
 <h1>Out of sample error</h1>
-<p>So our model is 99.6% accurate. We would therefore predict an out of sample error of 0.4%.</p>
+<p>So our model is 99.6% accurate on our holdout set. We would therefore predict an out of sample error of 0.4%.</p>
 </div>
 <div id="testing" class="section level1">
 <h1>Testing</h1>
