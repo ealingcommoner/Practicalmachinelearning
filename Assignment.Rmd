@@ -1,0 +1,158 @@
+---
+title: "Course project"
+author: "John Clifford"
+date: "27/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+## Introduction
+
+In this document we will obtain data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants who performed barbell lifts correctly and incorrectly in 5 different ways.
+
+## Data processing
+First let's get the data: 
+
+```{r getdata}
+library(caret)
+library(dplyr)
+library(tidyr)
+library(randomForest)
+library(e1071)
+library(rpart)
+url<- ("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+dest<- ("./training.csv")
+#download.file(url,dest)
+dataset <- read.csv(dest,na.strings=c('','NA'))
+```
+
+There are a lot of blank columns in our dataset. We can see this here
+```{r missingdate}
+library(naniar)
+empty<- miss_var_summary(dataset, show_pct= TRUE)
+empty_max<- subset(empty, empty$pct_miss>90)
+head(empty_max)
+dim(empty_max)
+```
+We should remove these empty columns.
+
+```{r cleandata}
+emptycols<- empty_max$variable
+`%ni%` <- Negate(`%in%`)
+dataset<- subset(dataset, select=(names(dataset) %ni% emptycols))
+```
+
+Our first 6 variables relate to time, username and number of observation, so we can also remove these.
+
+
+```{r omituser}
+dataset <- dataset[-c(1:6)]
+```
+
+We now have 54 variables; Our algorithms do not handle missing values well. So we check there are no incomplete observations. 
+```{r complete}
+dim(dataset)
+dataset<- na.omit(dataset)
+dim(dataset)
+```
+## Cross validation
+We will divide our dataset into training and validation sets and set a seed for reproducibility:
+
+```{r datasets}
+set.seed(343)
+inTrain = createDataPartition(dataset$classe, p = 0.6)[[1]]
+training = dataset[ inTrain,]
+valid = dataset[-inTrain,]
+dim(training)
+dim(valid)
+```
+We now have a training set and a validation set. 
+However, we will be using our validation set to select our model. This means we should hold back some data to test the chosen model. We will call this the holdout set. 
+```{r createholdout}
+inTrain = createDataPartition(valid$classe, p = 0.6)[[1]]
+validation = valid[ inTrain,]
+holdout = valid[-inTrain,]
+```
+
+## Choosing a model 
+Let's understand our 'classe' variable. 
+We need to understand the distribution of the 'classe' variable. We can see that this is in 5 classes A-E, with a higher number of observations in class A. Let's also set this to be a factor variable in all our datasets. 
+
+```{r table}
+
+table(training$classe)
+training$classe<- as.factor(training$classe)
+validation$classe<- as.factor(validation$classe)
+holdout$classe<- as.factor(holdout$classe)
+```
+## correlation
+We can see some correlation between certain variables. 
+```{r heatmap}
+library(corrplot)
+library(RColorBrewer)
+M <-cor(training[-c(54)])
+corrplot(M, type="upper", order="hclust", tl.pos='n',
+         col=brewer.pal(n=8, name="RdYlBu"))
+```
+
+## Model building
+We need a classifier algorithm. 
+
+Let's try Linear Discrimate Analysis. This may have advantages as we observed some correlation between some variables and we have a high number of samples. 
+```{r lda}
+model2lda<- train(classe ~.,method="lda",data=training)
+pred2lda<- predict(model2lda, validation)
+confusionMatrix(pred2lda, validation$classe)$overall["Accuracy"] 
+```
+Now let's build a basic decision tree. Decision trees are fast and can handle data with non-gaussian distributions.  
+```{r boosted tree}
+model2rprt<- rpart(classe ~ ., data=training, method="class")
+pred2rprt<- predict(model2rprt, validation, type="class")
+confusionMatrix(pred2rprt, validation$classe)$overall["Accuracy"] 
+```
+This performs as well as LDA. However, a random forest model may have an advantage due to the higher dimensionality of the data. 
+```{r random forest}
+model2rf<- randomForest(classe ~.,data=training, ntree=100) 
+pred2rf<- predict(model2rf, validation)
+confusionMatrix(pred2rf, validation$classe)$overall["Accuracy"] 
+```
+This model performs well with 99.6% accuracy. 
+
+Finally we will build a stacked model of these using the random forest method. 
+```{r esemble models}
+
+predDF <- data.frame(pred2rf,pred2rprt,pred2lda, classe=validation$classe)
+combModFit <- randomForest(classe ~.,method="rf",data=predDF, method="class", ntree=100) 
+ensemble_pred <- data.frame(
+                        predict(model2rf, validation),
+                        predict(model2rprt, validation, type="class"),
+                        predict(model2lda, validation),
+                        classe= validation$classe
+                        )
+names(ensemble_pred)<- names(predDF)        
+
+    
+combPred_val <- predict(combModFit,ensemble_pred)
+confusionMatrix(combPred_val, validation$classe)$overall["Accuracy"] 
+
+```
+We can see that there is no advantage to this approach, as it does not perform better than the best performing model. 
+
+# Cross validation
+We have selected our random forest predictor. Note we have used the validation dataset to select it, so we need to measure its performance against our holdout set. 
+```{r xvalidation}
+pred2rfh<- predict(model2rf, holdout)
+confusionMatrix(pred2rfh, holdout$classe)$overall["Accuracy"] 
+```
+# Out of sample error
+So our model is 99.6% accurate. We would therefore predict an out of sample error of 0.4%.
+
+# Testing
+```{r testing}
+test<- read.csv("./testing.csv",na.strings=c('','NA'))
+test_pred <- predict(model2rf, test)
+test_pred
+```
